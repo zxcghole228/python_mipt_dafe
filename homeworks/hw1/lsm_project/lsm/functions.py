@@ -34,18 +34,14 @@ def get_lsm_description(
     """
 
     global event_logger
-
+    #проверки
     if not (type(list(abscissa)) is list and type(list(ordinates)) is list):
         raise TypeError
-
     if not (_is_valid_measurments(abscissa) and
             _is_valid_measurments(ordinates)):
         raise ValueError
-
     if len(abscissa) != len(ordinates):
-        abscissa, ordinates = \
-            _process_mismatch(abscissa, ordinates, mismatch_strategy)
-
+        abscissa, ordinates = _process_mismatch(abscissa, ordinates, mismatch_strategy)
     return _get_lsm_description(abscissa, ordinates)
 
 
@@ -62,22 +58,24 @@ def get_lsm_lines(
 
     :return: структура типа LSMLines
     """
-    if lsm_description is None:
-        lsm_description = get_lsm_description(abscissa, ordinates)
-    if type(lsm_description) is not LSMDescription:
+    a = lsm_description
+    if a is None:
+        a = get_lsm_description(abscissa, ordinates)
+    #проверки
+    if type(a) is not LSMDescription:
         raise TypeError
-    line_predicted = [(lsm_description.incline*x + lsm_description.shift) for x in abscissa]
-    line_above = [((lsm_description.incline+lsm_description.incline_error)*x +
-                   lsm_description.shift + lsm_description.shift_error) for x in abscissa]
-    line_under = [((lsm_description.incline-lsm_description.incline_error)*x +
-                   lsm_description.shift - lsm_description.shift_error) for x in abscissa]
+    pr1 = [(a.incline * i + a.shift) for i in abscissa]
+    pr2 = [((a.incline + a.incline_error) * j +
+                   a.shift + a.shift_error) for j in abscissa]
+    pr3 = [((a.incline - a.incline_error) * _ +
+                   a.shift - a.shift_error) for _ in abscissa]
 
     return LSMLines(
         abscissa=abscissa,
         ordinates=ordinates,
-        line_predicted=line_predicted,
-        line_above=line_above,
-        line_under=line_under
+        line_predicted=pr1,
+        line_above=pr2,
+        line_under=pr3
     )
 
 
@@ -94,14 +92,14 @@ def get_report(
     """
     global PRECISION
 
+    a = lsm_description
     report = '\n'.join([
-        "="*40 + "LSM computing result" + "="*40 + "\n",
-        "[INFO]: incline: " + f'{lsm_description.incline:.{PRECISION}f}' + ";",
-        "[INFO]: shift: " + f'{lsm_description.shift:.{PRECISION}f}' + ";",
-        "[INFO]: incline error: " + f'{lsm_description.incline_error:.{PRECISION}f}' + ";",
-        "[INFO]: shift error: " + f'{lsm_description.shift_error:.{PRECISION}f}' + ";",
-        "\n" + "="*100
-    ])
+        "=" * 40 + "LSM computing result" + "=" * 40 + "\n",
+        "[INFO]: incline: " + f'{a.incline:.{PRECISION}f}' + ";",
+        "[INFO]: shift: " + f'{a.shift:.{PRECISION}f}' + ";",
+        "[INFO]: incline error: " + f'{a.incline_error:.{PRECISION}f}' + ";",
+        "[INFO]: shift error: " + f'{a.shift_error:.{PRECISION}f}' + ";",
+        "\n" + "=" * 100])
 
     if path_to_save != "":
         with open(path_to_save, 'w', encoding='utf-8') as f:
@@ -111,9 +109,8 @@ def get_report(
 
 # служебная функция для валидации
 def _is_valid_measurments(measurments: list[float]) -> bool:
-    if not (all(isinstance(i, Real) for i in measurments)):
-        return False
-    if len(measurments) <= 2:
+    m = measurments
+    if (not (all(isinstance(i, Real) for i in m))) or (len(m) <= 2):
         return False
     return True
 
@@ -145,22 +142,22 @@ def _get_lsm_description(
 ) -> LSMDescription:
     global event_logger, PRECISION
 
-    n = len(abscissa)
-    x = sum(abscissa) / n
-    y = sum(ordinates) / n
-    xy = sum(abscissa[i] * ordinates[i] for i in range(n)) / n
-    x2 = sum(i ** 2 for i in abscissa) / n
+    a = len(abscissa)
+    sm1 = sum(abscissa) / a
+    sm2 = sum(ordinates) / a
+    smxy = sum(abscissa[i] * ordinates[i] for i in range(a)) / a
+    smx = sum(i ** 2 for i in abscissa) / a
 
-    a = (xy - x * y) / (x2 - x ** 2)
-    b = y - a * x
+    otv1 = int((smxy - sm1 * sm2) / (smx - sm1 ** 2))
+    otv2 = sm2 - otv1 * sm1
 
-    sigma_y2 = sum((ordinates[i] - a*abscissa[i] - b)**2 for i in range(n)) / (n - 2)
-    sigma_a2 = sigma_y2 / (n * (x2 - x ** 2))
-    sigma_b2 = (sigma_y2 * x2) / (n * (x2 - x ** 2))
-
+    sigma_y2 = sum((ordinates[i] - otv1 * abscissa[i] - otv2) ** 2
+                   for i in range(a)) / (a - 2)
+    sigma_x = (sigma_y2 / ((smx - sm1 ** 2) * a)) ** 0.5
+    sigma_y = ((sigma_y2 * smx) / ((smx - sm1 ** 2) * a)) ** 0.5
     return LSMDescription(
-        incline=a,
-        shift=b,
-        incline_error=sigma_a2**0.5,
-        shift_error=sigma_b2**0.5
+        incline=otv1,
+        shift=otv2,
+        incline_error=sigma_x,
+        shift_error=sigma_y
     )
